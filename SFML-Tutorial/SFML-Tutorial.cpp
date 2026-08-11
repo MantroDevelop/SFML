@@ -18,7 +18,8 @@ public:
     Player(Vector2f startPosition, Vector2f playerSize, float moveSpeed)
         : position(startPosition), velocity(0.f, 0.f),
         size(playerSize), speed(moveSpeed)
-    {}
+    {
+    }
 
     void jump() {
         velocity.y = -800.f;
@@ -53,7 +54,7 @@ public:
         if (position.x < halfWidth) position.x = halfWidth;
         if (position.x > windowWidth - halfWidth) position.x = windowWidth - halfWidth;
     }
-    
+
     void groundCheck(float ground) {
         if (position.y > ground)
         {
@@ -75,8 +76,8 @@ public:
         return velocity;
     }
 
-    Vector2f getSize() const { 
-        return size; 
+    Vector2f getSize() const {
+        return size;
     }
 };
 
@@ -112,7 +113,7 @@ public:
 
 int main()
 {
-    RenderWindow window(VideoMode({600, 800}), "SFML works!");
+    RenderWindow window(VideoMode({ 600, 800 }), "SFML works!");
 
     window.setFramerateLimit(60);
 
@@ -128,7 +129,24 @@ int main()
 
     Clock clock;
 
-    Player player({ 400.f, 100.f }, { 50.f, 50.f }, 200.f);
+    Player player({ 100.f, 600.f }, { 50.f, 50.f }, 200.f);
+
+    View camera({ FloatRect({0.f, 0.f}, {600.f, 800.f}) });
+
+    vector<Platform> platforms;
+
+    float platformCount = 8;
+    float startY = 750.f;
+    float spacing = 200.f;
+
+    for (int i = 0; i < 8; ++i)
+    {
+        float x = 100.f + (i % 2) * 400.f;
+        float y = startY - (i * spacing);
+        platforms.push_back(Platform({ x,y }, { 100.f, 20.f }));
+    }
+
+    float highestPoint = 750.f;
 
     while (window.isOpen())
     {
@@ -146,20 +164,15 @@ int main()
         player.barrierX(600.f, 50.f);
         shape.setPosition(player.getPosition());
 
-        vector<Platform> platforms;
-
-        float platformCount = 8;
-        float startY = 750.f;
-        float spacing = 200.f;
-
-        for (int i = 0; i < 8; ++i)
+        if (player.getPosition().y < highestPoint)
         {
-            float x = 100.f + (i % 2) * 400.f;
-            float y = startY - (i * spacing);
-            platforms.push_back(Platform({ x,y }, { 100.f, 20.f }));
+            highestPoint = player.getPosition().y;
         }
 
+        camera.setCenter({ 300.f, highestPoint + 100.f });
+
         window.clear();
+        window.setView(camera);
         window.draw(shape);
         for (const Platform& platform : platforms) {
             platform.draw(window);
@@ -180,7 +193,7 @@ int main()
             }
         }
         window.display();
-        
+
     }
 
 }

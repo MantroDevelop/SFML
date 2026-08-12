@@ -163,7 +163,7 @@ int main()
 		}
 
         platforms.erase(remove_if(platforms.begin(), platforms.end(),
-            [&](const Platform& platform) {
+            [&highestPoint](const Platform& platform) {
                 return platform.getPosition().y > highestPoint + 400.f;
             }), platforms.end());
 

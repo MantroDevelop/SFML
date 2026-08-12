@@ -1,6 +1,8 @@
 ﻿#include <SFML/Graphics.hpp>
 #include <Windows.h>
 #include <iostream>
+#include <random>
+#include <algorithm>
 
 using namespace sf;
 using namespace std;
@@ -113,6 +115,9 @@ public:
 
 int main()
 {
+    mt19937 rng(random_device{}());
+    uniform_real_distribution<float> distX(50.f, 550.f);
+
     RenderWindow window(VideoMode({ 600, 800 }), "SFML works!");
 
     window.setFramerateLimit(60);
@@ -134,23 +139,33 @@ int main()
     View camera({ FloatRect({0.f, 0.f}, {600.f, 800.f}) });
 
     vector<Platform> platforms;
-
     float platformCount = 8;
     float startY = 750.f;
     float spacing = 200.f;
+    float highestPoint = 750.f;
+    float lastPlatformY = startY - (4 * spacing) + 100.f;
 
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < 4; ++i)
     {
         float x = 100.f + (i % 2) * 400.f;
         float y = startY - (i * spacing);
         platforms.push_back(Platform({ x,y }, { 100.f, 20.f }));
     }
 
-    float highestPoint = 750.f;
-
     while (window.isOpen())
     {
         float deltaTime = clock.restart().asSeconds();
+
+		if (highestPoint < lastPlatformY + 100.f) {
+			lastPlatformY -= spacing + 25.f;
+			float x = distX(rng);
+			platforms.push_back(Platform({ x, lastPlatformY }, { 100.f, 20.f }));
+		}
+
+        platforms.erase(remove_if(platforms.begin(), platforms.end(),
+            [&](const Platform& platform) {
+                return platform.getPosition().y > highestPoint + 400.f;
+            }), platforms.end());
 
         while (const optional event = window.pollEvent())
         {

@@ -170,6 +170,8 @@ int main()
 
     while (window.isOpen())
     {
+        float deltaTime = clock.restart().asSeconds();
+
         while (const optional event = window.pollEvent())
         {
             if (event->is<Event::Closed>())
@@ -178,7 +180,6 @@ int main()
 
         if (!isGameOver)
         {
-            float deltaTime = clock.restart().asSeconds();
             score = static_cast<int>(startY - highestPoint);
 
             scoreText.setString("Score: " + to_string(score));

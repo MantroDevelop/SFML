@@ -3,6 +3,7 @@
 #include <iostream>
 #include <random>
 #include <algorithm>
+#include <string>
 
 using namespace sf;
 using namespace std;
@@ -132,11 +133,23 @@ int main()
     float ground = 800.f - YSizeRect / 2.f;
     float gravity = 900.f;
 
+    Font font;
+    if (!font.openFromFile("Roboto-Italic-VariableFont_wdth,wght.ttf"))
+    {
+        cout << "Failed to load font!" << endl;
+    }
+
+    Text scoreText(font);
+    scoreText.setCharacterSize(30);
+    scoreText.setFillColor(Color::White);
+    scoreText.setPosition({ 10.f, 10.f });
+
     Clock clock;
 
     Player player({ 100.f, 600.f }, { 50.f, 50.f }, 200.f);
 
     View camera({ FloatRect({0.f, 0.f}, {600.f, 800.f}) });
+    View uiView({ FloatRect({0.f, 0.f}, {600.f, 800.f}) });
 
     vector<Platform> platforms;
     float platformCount = 8;
@@ -144,6 +157,9 @@ int main()
     float spacing = 200.f;
     float highestPoint = 750.f;
     float lastPlatformY = startY - (4 * spacing) + 100.f;
+    int score = static_cast<int>(startY - highestPoint);
+
+    bool isGameOver = false;
 
     for (int i = 0; i < 4; ++i)
     {
@@ -154,37 +170,54 @@ int main()
 
     while (window.isOpen())
     {
-        float deltaTime = clock.restart().asSeconds();
-
-		if (highestPoint < lastPlatformY + 100.f) {
-			lastPlatformY -= spacing + 25.f;
-			float x = distX(rng);
-			platforms.push_back(Platform({ x, lastPlatformY }, { 100.f, 20.f }));
-		}
-
-        platforms.erase(remove_if(platforms.begin(), platforms.end(),
-            [&highestPoint](const Platform& platform) {
-                return platform.getPosition().y > highestPoint + 400.f;
-            }), platforms.end());
-
         while (const optional event = window.pollEvent())
         {
             if (event->is<Event::Closed>())
                 window.close();
         }
 
-        player.handleInput(deltaTime);
-        player.update(deltaTime, gravity);
-        player.groundCheck(ground);
-        player.barrierX(600.f, 50.f);
-        shape.setPosition(player.getPosition());
-
-        if (player.getPosition().y < highestPoint)
+        if (!isGameOver)
         {
-            highestPoint = player.getPosition().y;
+            float deltaTime = clock.restart().asSeconds();
+            score = static_cast<int>(startY - highestPoint);
+
+            scoreText.setString("Score: " + to_string(score));
+            if (highestPoint < lastPlatformY + 100.f) {
+                lastPlatformY -= spacing + 25.f;
+                float x = distX(rng);
+                platforms.push_back(Platform({ x, lastPlatformY }, { 100.f, 20.f }));
+            }
+
+            platforms.erase(remove_if(platforms.begin(), platforms.end(),
+                [&highestPoint](const Platform& platform) {
+                    return platform.getPosition().y > highestPoint + 400.f;
+                }), platforms.end());
+
+            
+
+            player.handleInput(deltaTime);
+            player.update(deltaTime, gravity);
+            player.groundCheck(ground);
+            player.barrierX(600.f, 50.f);
+            shape.setPosition(player.getPosition());
+
+            if (player.getPosition().y < highestPoint)
+            {
+                highestPoint = player.getPosition().y;
+            }
+
+            camera.setCenter({ 300.f, highestPoint + 100.f });
+
+            if (player.getPosition().y > highestPoint + 400.f)
+            {
+                isGameOver = true;
+            }
         }
 
-        camera.setCenter({ 300.f, highestPoint + 100.f });
+        if (isGameOver)
+        {
+            scoreText.setString("GAME OVER! Score: " + to_string(score));
+        }
 
         window.clear();
         window.setView(camera);
@@ -207,6 +240,8 @@ int main()
                 }
             }
         }
+        window.setView(uiView);
+        window.draw(scoreText);
         window.display();
 
     }

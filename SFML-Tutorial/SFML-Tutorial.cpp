@@ -4,6 +4,7 @@
 #include <random>
 #include <algorithm>
 #include <string>
+#include <memory>
 
 using namespace sf;
 using namespace std;
@@ -85,6 +86,7 @@ public:
 };
 
 class Platform {
+protected:
     RectangleShape shape;
 
 public:
@@ -95,9 +97,13 @@ public:
         shape.setPosition(position);
     }
 
-    void draw(RenderWindow& window) const {
+    virtual void draw(RenderWindow& window) const {
         window.draw(shape);
     }
+
+    virtual ~Platform() {}
+
+    virtual void update(float deltaTime) {}
 
     Vector2f getPosition() const {
         return shape.getPosition();
@@ -113,11 +119,58 @@ public:
 
 };
 
+class MovingPlatform : public Platform {
+    float speed;
+    float leftBound;
+    float rightBound;
+    int direction = 1;
+public:
+    MovingPlatform(Vector2f position, Vector2f size, float moveSpeed, float range)
+        : Platform(position, size), speed(moveSpeed),
+        leftBound(position.x - range), rightBound(position.x + range) {
+        shape.setFillColor(Color::Cyan);
+    }
+
+    void update(float deltaTime) override{
+        float dx = speed * direction * deltaTime;
+        shape.move({ dx,0.f });
+
+        if (shape.getPosition().x <= leftBound || shape.getPosition().x >= rightBound)
+        {
+            direction *= -1;
+        }
+    }
+};
+
+class BreakablePlatform : public Platform {
+    bool isBroken = false;
+public:
+    BreakablePlatform(Vector2f position, Vector2f size)
+        : Platform(position, size)
+    {
+        shape.setFillColor(Color::Red);
+    }
+
+    void breakPlatform() {
+        isBroken = true;
+    }
+
+    bool isGetBroken() const{
+        return isBroken;
+    }
+
+    void draw(RenderWindow& window) const override {
+        if (!isBroken) {
+            window.draw(shape);
+        }
+    }
+};
 
 int main()
 {
     mt19937 rng(random_device{}());
     uniform_real_distribution<float> distX(50.f, 550.f);
+    uniform_int_distribution<int> randPlatform(1, 3);
 
     RenderWindow window(VideoMode({ 600, 800 }), "SFML works!");
 
@@ -151,7 +204,7 @@ int main()
     View camera({ FloatRect({0.f, 0.f}, {600.f, 800.f}) });
     View uiView({ FloatRect({0.f, 0.f}, {600.f, 800.f}) });
 
-    vector<Platform> platforms;
+    vector<unique_ptr<Platform>> platforms;
     float platformCount = 8;
     float startY = 750.f;
     float spacing = 200.f;
@@ -165,7 +218,7 @@ int main()
     {
         float x = 100.f + (i % 2) * 400.f;
         float y = startY - (i * spacing);
-        platforms.push_back(Platform({ x,y }, { 100.f, 20.f }));
+        platforms.push_back(make_unique<Platform>(Vector2f{ x, y }, Vector2f{ 100.f, 20.f }));
     }
 
     while (window.isOpen())
@@ -186,12 +239,22 @@ int main()
             if (highestPoint < lastPlatformY + 100.f) {
                 lastPlatformY -= spacing + 25.f;
                 float x = distX(rng);
-                platforms.push_back(Platform({ x, lastPlatformY }, { 100.f, 20.f }));
+                int platformType = randPlatform(rng);
+                if (platformType == 1)
+                {
+                    platforms.push_back(make_unique<Platform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 20.f }));
+                }
+                else if (platformType == 2) {
+                    platforms.push_back(make_unique<MovingPlatform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 20.f }, 75.f, 200.f));
+                }
+                else {
+                    platforms.push_back(make_unique<BreakablePlatform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 20.f }));
+                }
             }
 
             platforms.erase(remove_if(platforms.begin(), platforms.end(),
-                [&highestPoint](const Platform& platform) {
-                    return platform.getPosition().y > highestPoint + 400.f;
+                [&highestPoint](const unique_ptr<Platform>& platform) {
+                    return platform->getPosition().y > highestPoint + 400.f;
                 }), platforms.end());
 
             
@@ -223,21 +286,27 @@ int main()
         window.clear();
         window.setView(camera);
         window.draw(shape);
-        for (const Platform& platform : platforms) {
-            platform.draw(window);
+        for (const unique_ptr<Platform>& platform : platforms) {
+            platform->draw(window);
+            platform->update(deltaTime);
 
             bool isFalling = player.getVelocity().y > 0.f;
-            auto intersection = player.getBounds().findIntersection(platform.getBounds());
+            auto intersection = player.getBounds().findIntersection(platform->getBounds());
 
             if (isFalling && intersection.has_value())
             {
                 float playerBottom = player.getPosition().y + player.getSize().y / 2.f;
-                float platformTop = platform.getPosition().y - platform.getSize().y / 2.f;
+                float platformTop = platform->getPosition().y - platform->getSize().y / 2.f;
 
-                float tolerance = platform.getSize().y - 3.f;
+                float tolerance = platform->getSize().y - 3.f;
                 if (playerBottom - platformTop <= tolerance)
                 {
                     player.landOn(platformTop);
+                    BreakablePlatform* breakable = dynamic_cast<BreakablePlatform*>(platform.get());
+                    if (breakable != nullptr)
+                    {
+                        breakable->breakPlatform();
+                    }
                 }
             }
         }

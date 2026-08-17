@@ -29,6 +29,10 @@ public:
         velocity.y = -800.f;
     }
 
+    void superJump() {
+       velocity.y = -1200.f;
+    }
+
     void update(float deltaTime, float gravity) {
         velocity.y += gravity * deltaTime;
         position.y += velocity.y * deltaTime;
@@ -57,14 +61,6 @@ public:
 
         if (position.x < halfWidth) position.x = halfWidth;
         if (position.x > windowWidth - halfWidth) position.x = windowWidth - halfWidth;
-    }
-
-    void groundCheck(float ground) {
-        if (position.y > ground)
-        {
-            position.y = ground;
-            jump();
-        }
     }
 
     void landOn(float platformTopY) {
@@ -135,7 +131,7 @@ public:
         float dx = speed * direction * deltaTime;
         shape.move({ dx,0.f });
 
-        if (shape.getPosition().x <= leftBound || shape.getPosition().x >= rightBound)
+        if (shape.getPosition().x <= leftBound || shape.getPosition().x >= rightBound || shape.getPosition().x - 50.f <= 0.f || shape.getPosition().x + 50.f >= 600.f)
         {
             direction *= -1;
         }
@@ -166,11 +162,62 @@ public:
     }
 };
 
+class PowerUp {
+    Platform* attachedPlatform;
+    RectangleShape shape;
+    bool isCollected = false;
+public:
+    PowerUp(Vector2f position, Vector2f size, Platform* attachedPlatformptr) {
+        attachedPlatform = attachedPlatformptr;
+        shape.setSize(size);
+        shape.setFillColor(Color::Magenta);
+        shape.setOrigin(shape.getGeometricCenter());
+        shape.setPosition(position);
+    }
+
+    void draw(RenderWindow& window) {
+        if (isCollected == false)
+        {
+            window.draw(shape);
+        }
+    }
+
+    void collectPower() {
+        isCollected = true;
+    }
+
+    void update() {
+        shape.setPosition({ attachedPlatform->getPosition().x, attachedPlatform->getPosition().y - 20.f});
+    }
+
+    Vector2f getAttachedPlatformPostion() {
+        return attachedPlatform->getPosition();
+    }
+
+    FloatRect getBounds() const {
+        return shape.getGlobalBounds();
+    }
+
+    bool isGetCollected() const {
+        return isCollected;
+    }
+
+    Vector2f getPosition() const {
+        return shape.getPosition();
+    }
+
+    Vector2f getSize() const {
+        return shape.getSize();
+    }
+};
+
 int main()
 {
     mt19937 rng(random_device{}());
     uniform_real_distribution<float> distX(50.f, 550.f);
     uniform_int_distribution<int> randPlatform(1, 3);
+    uniform_int_distribution<int> chance(1, 100);
+
 
     RenderWindow window(VideoMode({ 600, 800 }), "SFML works!");
 
@@ -183,7 +230,6 @@ int main()
     shape.setOrigin(shape.getGeometricCenter());
     shape.setPosition(window.getView().getSize() / 2.f);
 
-    float ground = 800.f - YSizeRect / 2.f;
     float gravity = 900.f;
 
     Font font;
@@ -205,6 +251,7 @@ int main()
     View uiView({ FloatRect({0.f, 0.f}, {600.f, 800.f}) });
 
     vector<unique_ptr<Platform>> platforms;
+    vector<PowerUp> powerUps;
     float platformCount = 8;
     float startY = 750.f;
     float spacing = 200.f;
@@ -240,6 +287,8 @@ int main()
                 lastPlatformY -= spacing + 25.f;
                 float x = distX(rng);
                 int platformType = randPlatform(rng);
+                int powerUpChance = chance(rng);
+
                 if (platformType == 1)
                 {
                     platforms.push_back(make_unique<Platform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 20.f }));
@@ -250,18 +299,26 @@ int main()
                 else {
                     platforms.push_back(make_unique<BreakablePlatform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 20.f }));
                 }
+
+                if (powerUpChance <= 20 && powerUpChance >= 1)
+                {
+                    powerUps.push_back(PowerUp(Vector2f{ x, lastPlatformY - 20.f }, Vector2f{ 50.f,20.f }, platforms.back().get()));
+                }
             }
+
+            powerUps.erase(remove_if(powerUps.begin(), powerUps.end(),
+                [&highestPoint](PowerUp& powerUp) {
+                    return powerUp.getAttachedPlatformPostion().y > highestPoint + 400.f;
+                }), powerUps.end());
 
             platforms.erase(remove_if(platforms.begin(), platforms.end(),
                 [&highestPoint](const unique_ptr<Platform>& platform) {
                     return platform->getPosition().y > highestPoint + 400.f;
                 }), platforms.end());
-
             
 
             player.handleInput(deltaTime);
             player.update(deltaTime, gravity);
-            player.groundCheck(ground);
             player.barrierX(600.f, 50.f);
             shape.setPosition(player.getPosition());
 
@@ -272,7 +329,7 @@ int main()
 
             camera.setCenter({ 300.f, highestPoint + 100.f });
 
-            if (player.getPosition().y > highestPoint + 400.f)
+            if (player.getPosition().y > highestPoint + 600.f)
             {
                 isGameOver = true;
             }
@@ -292,7 +349,6 @@ int main()
 
             bool isFalling = player.getVelocity().y > 0.f;
             auto intersection = player.getBounds().findIntersection(platform->getBounds());
-
             if (isFalling && intersection.has_value())
             {
                 float playerBottom = player.getPosition().y + player.getSize().y / 2.f;
@@ -301,12 +357,30 @@ int main()
                 float tolerance = platform->getSize().y - 3.f;
                 if (playerBottom - platformTop <= tolerance)
                 {
-                    player.landOn(platformTop);
                     BreakablePlatform* breakable = dynamic_cast<BreakablePlatform*>(platform.get());
+                    if (breakable == nullptr || !breakable->isGetBroken())
+                    {
+                        player.landOn(platformTop);
+
+                    }
                     if (breakable != nullptr)
                     {
                         breakable->breakPlatform();
                     }
+                }
+            }
+        }
+
+        for (PowerUp& powerUp : powerUps) {
+            if (!powerUp.isGetCollected())
+            {
+                powerUp.draw(window);
+                powerUp.update();
+                auto intersection = player.getBounds().findIntersection(powerUp.getBounds());
+                if (intersection.has_value())
+                {
+                    player.superJump();
+                    powerUp.collectPower();
                 }
             }
         }

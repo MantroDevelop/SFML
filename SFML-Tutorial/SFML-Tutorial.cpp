@@ -68,6 +68,11 @@ public:
         jump();
     }
 
+    void reset(Vector2f startPosition) {
+        position = startPosition;
+        velocity = { 0.f,0.f };
+    }
+
     Vector2f getPosition() const {
         return position;
     }
@@ -211,6 +216,36 @@ public:
     }
 };
 
+enum class GameState {
+    Menu,
+    Playing,
+    GameOver
+};
+
+void resetGame(Player& player, vector<unique_ptr<Platform>>& platforms,
+    vector<PowerUp>& powerUps, float& highestPoint,
+    float& lastPlatformY, View& camera)
+{
+    player.reset({ 100.f, 600.f });
+
+    platforms.clear();
+    powerUps.clear();
+
+    float spacing = 200.f;
+    float startY = 750.f;
+    for (int i = 0; i < 4; ++i)
+    {
+        float x = 100.f + (i % 2) * 400.f;
+        float y = startY - (i * spacing);
+        platforms.push_back(make_unique<Platform>(Vector2f{ x, y }, Vector2f{ 100.f, 20.f }));
+    }
+
+    highestPoint = 750.f;
+    lastPlatformY = startY - (4 * spacing) + 100.f;
+    camera.setCenter({ 300.f, highestPoint + 100.f });
+
+}
+
 int main()
 {
     mt19937 rng(random_device{}());
@@ -243,6 +278,11 @@ int main()
     scoreText.setFillColor(Color::White);
     scoreText.setPosition({ 10.f, 10.f });
 
+    Text resetText(font);
+    resetText.setCharacterSize(30);
+    resetText.setFillColor(Color::White);
+    resetText.setPosition({ 10.f, 40.f });
+
     Clock clock;
 
     Player player({ 100.f, 600.f }, { 50.f, 50.f }, 200.f);
@@ -259,7 +299,7 @@ int main()
     float lastPlatformY = startY - (4 * spacing) + 100.f;
     int score = static_cast<int>(startY - highestPoint);
 
-    bool isGameOver = false;
+    GameState currentState = GameState::Menu;
 
     for (int i = 0; i < 4; ++i)
     {
@@ -271,14 +311,42 @@ int main()
     while (window.isOpen())
     {
         float deltaTime = clock.restart().asSeconds();
+        resetText.setString("");
 
         while (const optional event = window.pollEvent())
         {
             if (event->is<Event::Closed>())
                 window.close();
+
+            if (currentState == GameState::Menu)
+            {
+                if (const auto* keyPressed = event->getIf<Event::KeyPressed>())
+                {
+                    if (keyPressed->scancode == Scan::Space)
+                    {
+                        currentState = GameState::Playing;
+                    }
+                }
+            }
+
+            if (currentState == GameState::GameOver)
+            {
+                if (const auto* keyPressed = event->getIf<Event::KeyPressed>())
+                {
+                    if (keyPressed->scancode == Scan::Space)
+                    {
+                        resetGame(player,platforms,powerUps,highestPoint,lastPlatformY,camera);
+                        currentState = GameState::Playing;
+                    }
+                }
+            }
         }
 
-        if (!isGameOver)
+        if (currentState == GameState::Menu)
+        {
+            scoreText.setString("Press SPACE to start");
+        }
+        else if (currentState == GameState::Playing)
         {
             score = static_cast<int>(startY - highestPoint);
 
@@ -331,13 +399,14 @@ int main()
 
             if (player.getPosition().y > highestPoint + 600.f)
             {
-                isGameOver = true;
+                currentState = GameState::GameOver;
             }
         }
-
-        if (isGameOver)
+        else if (currentState == GameState::GameOver)
         {
             scoreText.setString("GAME OVER! Score: " + to_string(score));
+            resetText.setString("Press SPACE to restart");
+
         }
 
         window.clear();
@@ -386,6 +455,7 @@ int main()
         }
         window.setView(uiView);
         window.draw(scoreText);
+        window.draw(resetText);
         window.display();
 
     }

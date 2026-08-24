@@ -261,9 +261,13 @@ int main()
     float XSizeRect = 50.f;
     float YSizeRect = 50.f;
 
-    RectangleShape shape({ XSizeRect, YSizeRect });
-    shape.setOrigin(shape.getGeometricCenter());
-    shape.setPosition(window.getView().getSize() / 2.f);
+    Texture playerTexture;
+    playerTexture.loadFromFile("Textures/IDLE.png");
+
+    Sprite playerSprite(playerTexture);
+    playerSprite.setTextureRect({ {0,0},{96,96} });
+    playerSprite.setOrigin({ 48.f,65.f });
+    playerSprite.setScale({ 1.5f,1.5f });
 
     float gravity = 900.f;
 
@@ -284,6 +288,8 @@ int main()
     resetText.setPosition({ 10.f, 40.f });
 
     Clock clock;
+    Clock animationClock;
+    int currentFrame = 0;
 
     Player player({ 100.f, 600.f }, { 50.f, 50.f }, 200.f);
 
@@ -387,8 +393,8 @@ int main()
 
             player.handleInput(deltaTime);
             player.update(deltaTime, gravity);
-            player.barrierX(600.f, 50.f);
-            shape.setPosition(player.getPosition());
+            player.barrierX(600.f, player.getSize().x);
+            playerSprite.setPosition(player.getPosition());
 
             if (player.getPosition().y < highestPoint)
             {
@@ -409,9 +415,24 @@ int main()
 
         }
 
+        if (animationClock.getElapsedTime().asSeconds() > 0.1f)
+        {
+            currentFrame++;
+
+            if (currentFrame >= 10)
+                currentFrame = 0;
+
+            playerSprite.setTextureRect(
+                IntRect({ currentFrame * 96, 0 }, { 96, 96 })
+            );
+
+            animationClock.restart();
+        }
+        
+
         window.clear();
         window.setView(camera);
-        window.draw(shape);
+        window.draw(playerSprite);
         for (const unique_ptr<Platform>& platform : platforms) {
             platform->draw(window);
             platform->update(deltaTime);

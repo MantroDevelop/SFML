@@ -38,14 +38,16 @@ public:
         position.y += velocity.y * deltaTime;
     }
 
-    void handleInput(float deltaTime) {
+    void handleInput(float deltaTime, Sprite& player) {
         float distance = speed * deltaTime;
 
         if (Keyboard::isKeyPressed(Scan::A)) {
             position.x -= distance;
+            player.setScale({ -1.5f, 1.5f });
         }
         if (Keyboard::isKeyPressed(Scan::D)) {
             position.x += distance;
+            player.setScale({ 1.5f,1.5f });
         }
     }
 
@@ -222,6 +224,13 @@ enum class GameState {
     GameOver
 };
 
+enum class TextureState {
+    Idle,
+    Jump,
+    Fall
+};
+
+
 void resetGame(Player& player, vector<unique_ptr<Platform>>& platforms,
     vector<PowerUp>& powerUps, float& highestPoint,
     float& lastPlatformY, View& camera)
@@ -253,7 +262,6 @@ int main()
     uniform_int_distribution<int> randPlatform(1, 3);
     uniform_int_distribution<int> chance(1, 100);
 
-
     RenderWindow window(VideoMode({ 600, 800 }), "SFML works!");
 
     window.setFramerateLimit(60);
@@ -262,13 +270,25 @@ int main()
     float YSizeRect = 50.f;
 
     Texture playerTexture;
-    playerTexture.loadFromFile("Textures/IDLE.png");
+    playerTexture.loadFromFile("Textures/Idle.png");
+
+    Texture jumpTexture;
+    jumpTexture.loadFromFile("Textures/Jump2.png");
+
+    Texture fallTexture;
+    fallTexture.loadFromFile("Textures/Fall.png");
+
+    Texture bgTexture;
+    bgTexture.loadFromFile("Textures/bg.png");
 
     Sprite playerSprite(playerTexture);
-    playerSprite.setTextureRect({ {0,0},{96,96} });
-    playerSprite.setOrigin({ 48.f,65.f });
+    playerSprite.setTextureRect({ {0,0},{128,128} });
+    playerSprite.setOrigin({ 64.f,64.f });
     playerSprite.setScale({ 1.5f,1.5f });
 
+    Sprite backgroundSprite(bgTexture);
+    backgroundSprite.setScale({ 3.f,3.f });
+    
     float gravity = 900.f;
 
     Font font;
@@ -303,9 +323,11 @@ int main()
     float spacing = 200.f;
     float highestPoint = 750.f;
     float lastPlatformY = startY - (4 * spacing) + 100.f;
+    bool isJump = false;
     int score = static_cast<int>(startY - highestPoint);
 
     GameState currentState = GameState::Menu;
+    TextureState playerState = TextureState::Idle;
 
     for (int i = 0; i < 4; ++i)
     {
@@ -391,7 +413,7 @@ int main()
                 }), platforms.end());
             
 
-            player.handleInput(deltaTime);
+            player.handleInput(deltaTime, playerSprite);
             player.update(deltaTime, gravity);
             player.barrierX(600.f, player.getSize().x);
             playerSprite.setPosition(player.getPosition());
@@ -407,6 +429,66 @@ int main()
             {
                 currentState = GameState::GameOver;
             }
+
+            if (player.getVelocity().y > 0.f)
+            {
+                playerState = TextureState::Fall;
+            }
+            else if (player.getVelocity().y < 0.f) {
+                playerState = TextureState::Jump;
+            }
+            else {
+                playerState = TextureState::Idle;
+            }
+
+            if (animationClock.getElapsedTime().asSeconds() > 0.1f)
+            {
+                currentFrame++;
+
+                if (playerState == TextureState::Idle)
+                {
+                    playerSprite.setTexture(playerTexture);
+                    if (currentFrame >= 10)
+                        currentFrame = 0;
+
+                    playerSprite.setTextureRect(
+                        IntRect({ currentFrame * 128, 0 }, { 128, 128 })
+                    );
+
+                    animationClock.restart();
+                    isJump = false;
+                }
+                else if (playerState == TextureState::Fall) {
+                    playerSprite.setTexture(fallTexture);
+                    if (currentFrame >= 4)
+                        currentFrame = 0;
+
+                    playerSprite.setTextureRect(
+                        IntRect({ currentFrame * 128, 0 }, { 128, 128 })
+                    );
+
+                    animationClock.restart();
+                    isJump = false;
+                }
+                else {
+                    if (!isJump)
+                    {
+                        currentFrame = 0;
+                        isJump = true;
+                    }
+                    playerSprite.setTexture(jumpTexture);
+                    if (currentFrame >= 2)
+                        currentFrame = 1;
+
+                    playerSprite.setTextureRect(
+                        IntRect({ currentFrame * 128, 0 }, { 128, 128 })
+                    );
+
+                    animationClock.restart();
+                }
+
+            }
+
         }
         else if (currentState == GameState::GameOver)
         {
@@ -414,25 +496,11 @@ int main()
             resetText.setString("Press SPACE to restart");
 
         }
-
-        if (animationClock.getElapsedTime().asSeconds() > 0.1f)
-        {
-            currentFrame++;
-
-            if (currentFrame >= 10)
-                currentFrame = 0;
-
-            playerSprite.setTextureRect(
-                IntRect({ currentFrame * 96, 0 }, { 96, 96 })
-            );
-
-            animationClock.restart();
-        }
-        
+        backgroundSprite.setPosition({ camera.getCenter().x - 300.f, camera.getCenter().y - 400.f});
 
         window.clear();
         window.setView(camera);
-        window.draw(playerSprite);
+        window.draw(backgroundSprite);
         for (const unique_ptr<Platform>& platform : platforms) {
             platform->draw(window);
             platform->update(deltaTime);
@@ -474,6 +542,7 @@ int main()
                 }
             }
         }
+        window.draw(playerSprite);
         window.setView(uiView);
         window.draw(scoreText);
         window.draw(resetText);

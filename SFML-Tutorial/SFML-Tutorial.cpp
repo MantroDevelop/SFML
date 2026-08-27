@@ -12,11 +12,23 @@ using namespace std;
 using Keyboard::isKeyPressed;
 using Keyboard::Scan;
 
+enum class GameState {
+    Menu,
+    Playing,
+    GameOver
+};
+
+enum class TextureState {
+    Idle,
+    Jump,
+    Fall
+};
+
 class Player {
     Vector2f position;
     Vector2f velocity;
     Vector2f size;
-    float speed = 200.f;
+    float speed = 250.f;
 
 public:
     Player(Vector2f startPosition, Vector2f playerSize, float moveSpeed)
@@ -93,9 +105,10 @@ protected:
     RectangleShape shape;
 
 public:
-    Platform(Vector2f position, Vector2f size) {
+    Platform(Vector2f position, Vector2f size, const Texture& texture, int skinIndex) {
         shape.setSize(size);
-        shape.setFillColor(Color::White);
+        shape.setTexture(&texture);
+        shape.setTextureRect(IntRect({ 0, skinIndex*16 }, { 33, 16 }));
         shape.setOrigin(shape.getGeometricCenter());
         shape.setPosition(position);
     }
@@ -128,10 +141,9 @@ class MovingPlatform : public Platform {
     float rightBound;
     int direction = 1;
 public:
-    MovingPlatform(Vector2f position, Vector2f size, float moveSpeed, float range)
-        : Platform(position, size), speed(moveSpeed),
+    MovingPlatform(Vector2f position, Vector2f size, float moveSpeed, float range, const Texture& texture, int skinIndex)
+        : Platform(position, size, texture, skinIndex), speed(moveSpeed),
         leftBound(position.x - range), rightBound(position.x + range) {
-        shape.setFillColor(Color::Cyan);
     }
 
     void update(float deltaTime) override{
@@ -148,10 +160,9 @@ public:
 class BreakablePlatform : public Platform {
     bool isBroken = false;
 public:
-    BreakablePlatform(Vector2f position, Vector2f size)
-        : Platform(position, size)
+    BreakablePlatform(Vector2f position, Vector2f size, const Texture& texture, int skinIndex)
+        : Platform(position, size, texture, skinIndex)
     {
-        shape.setFillColor(Color::Red);
     }
 
     void breakPlatform() {
@@ -218,22 +229,9 @@ public:
     }
 };
 
-enum class GameState {
-    Menu,
-    Playing,
-    GameOver
-};
-
-enum class TextureState {
-    Idle,
-    Jump,
-    Fall
-};
-
-
 void resetGame(Player& player, vector<unique_ptr<Platform>>& platforms,
     vector<PowerUp>& powerUps, float& highestPoint,
-    float& lastPlatformY, View& camera)
+    float& lastPlatformY, View& camera, Texture& platformTexture)
 {
     player.reset({ 100.f, 600.f });
 
@@ -244,9 +242,9 @@ void resetGame(Player& player, vector<unique_ptr<Platform>>& platforms,
     float startY = 750.f;
     for (int i = 0; i < 4; ++i)
     {
-        float x = 100.f + (i % 2) * 400.f;
+        float x = 100.f + (i % 2) * 350.f;
         float y = startY - (i * spacing);
-        platforms.push_back(make_unique<Platform>(Vector2f{ x, y }, Vector2f{ 100.f, 20.f }));
+        platforms.push_back(make_unique<Platform>(Vector2f{ x, y }, Vector2f{ 100.f, 40.f }, platformTexture, 0));
     }
 
     highestPoint = 750.f;
@@ -268,6 +266,9 @@ int main()
 
     float XSizeRect = 50.f;
     float YSizeRect = 50.f;
+
+    Texture platformTexture;
+    platformTexture.loadFromFile("Textures/platforms2.png");
 
     Texture playerTexture;
     playerTexture.loadFromFile("Textures/Idle.png");
@@ -311,7 +312,7 @@ int main()
     Clock animationClock;
     int currentFrame = 0;
 
-    Player player({ 100.f, 600.f }, { 50.f, 50.f }, 200.f);
+    Player player({ 100.f, 600.f }, { 10.f, 50.f }, 200.f);
 
     View camera({ FloatRect({0.f, 0.f}, {600.f, 800.f}) });
     View uiView({ FloatRect({0.f, 0.f}, {600.f, 800.f}) });
@@ -331,9 +332,9 @@ int main()
 
     for (int i = 0; i < 4; ++i)
     {
-        float x = 100.f + (i % 2) * 400.f;
+        float x = 100.f + (i % 2) * 350.f;
         float y = startY - (i * spacing);
-        platforms.push_back(make_unique<Platform>(Vector2f{ x, y }, Vector2f{ 100.f, 20.f }));
+        platforms.push_back(make_unique<Platform>(Vector2f{ x, y }, Vector2f{ 100.f, 40.f }, platformTexture, 0));
     }
 
     while (window.isOpen())
@@ -363,7 +364,7 @@ int main()
                 {
                     if (keyPressed->scancode == Scan::Space)
                     {
-                        resetGame(player,platforms,powerUps,highestPoint,lastPlatformY,camera);
+                        resetGame(player,platforms,powerUps,highestPoint,lastPlatformY,camera, platformTexture);
                         currentState = GameState::Playing;
                     }
                 }
@@ -387,13 +388,13 @@ int main()
 
                 if (platformType == 1)
                 {
-                    platforms.push_back(make_unique<Platform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 20.f }));
+                    platforms.push_back(make_unique<Platform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 40.f }, platformTexture, 0));
                 }
                 else if (platformType == 2) {
-                    platforms.push_back(make_unique<MovingPlatform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 20.f }, 75.f, 200.f));
+                    platforms.push_back(make_unique<MovingPlatform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 40.f }, 75.f, 200.f, platformTexture, 3));
                 }
                 else {
-                    platforms.push_back(make_unique<BreakablePlatform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 20.f }));
+                    platforms.push_back(make_unique<BreakablePlatform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 40.f }, platformTexture, 1));
                 }
 
                 if (powerUpChance <= 20 && powerUpChance >= 1)

@@ -185,10 +185,10 @@ class PowerUp {
     RectangleShape shape;
     bool isCollected = false;
 public:
-    PowerUp(Vector2f position, Vector2f size, Platform* attachedPlatformptr) {
+    PowerUp(Vector2f position, Vector2f size, Platform* attachedPlatformptr, const Texture& texture) {
         attachedPlatform = attachedPlatformptr;
         shape.setSize(size);
-        shape.setFillColor(Color::Magenta);
+        shape.setTexture(&texture);
         shape.setOrigin(shape.getGeometricCenter());
         shape.setPosition(position);
     }
@@ -205,7 +205,7 @@ public:
     }
 
     void update() {
-        shape.setPosition({ attachedPlatform->getPosition().x, attachedPlatform->getPosition().y - 20.f});
+        shape.setPosition({ attachedPlatform->getPosition().x, attachedPlatform->getPosition().y - 34.f});
     }
 
     Vector2f getAttachedPlatformPostion() {
@@ -229,14 +229,109 @@ public:
     }
 };
 
+class Bird {
+    RectangleShape shape;
+    float speed;
+    float leftBound;
+    float rightBound;
+    int direction = 1;
+    bool isKilled = false;
+
+    int currentFrame = 0;
+    Clock animationClock;
+    static const int FRAME_WIDTH = 48;
+    static const int FRAME_HEIGHT = 48;
+    static const int FRAME_COUNT = 9;
+
+public:
+    Bird(Vector2f position, Vector2f size, float moveSpeed, float range, const Texture& texture) {
+        shape.setSize(size);
+        shape.setTexture(&texture);
+        shape.setTextureRect(IntRect({ 0, 0 }, { FRAME_WIDTH, FRAME_HEIGHT }));
+        shape.setOrigin(shape.getGeometricCenter());
+        shape.setPosition(position);
+        speed = moveSpeed;
+        leftBound = max(position.x - range, 60.f);
+        rightBound = min(position.x + range, 540.f);
+    }
+
+    void update(float deltaTime) {
+        if (isKilled) return;
+
+        float dx = speed * direction * deltaTime;
+        shape.move({ dx, 0.f });
+
+        if (shape.getPosition().x <= leftBound || shape.getPosition().x >= rightBound)
+        {
+            direction *= -1;
+        }
+
+        if(direction == 1) {
+            shape.setScale({ -1.75f,1.75f });
+        }
+        if (direction == -1) {
+            shape.setScale({ 1.75f,1.75f });
+        }
+
+        if (animationClock.getElapsedTime().asSeconds() > 0.1f)
+        {
+            currentFrame++;
+            if (currentFrame >= FRAME_COUNT)
+                currentFrame = 0;
+
+            shape.setTextureRect(IntRect({ currentFrame * 64, 0 }, { FRAME_WIDTH, FRAME_HEIGHT }));
+            animationClock.restart();
+        }
+    }
+
+    void draw(RenderWindow& window) {
+        if (!isKilled)
+        {
+            window.draw(shape);
+        }
+    }
+
+    void kill() {
+        isKilled = true;
+    }
+
+    bool isDead() const {
+        return isKilled;
+    }
+
+    Vector2f getPosition() const {
+        return shape.getPosition();
+    }
+
+    Vector2f getSize() const {
+        return shape.getSize();
+    }
+
+    FloatRect getBounds() const {
+        FloatRect bounds = shape.getGlobalBounds();
+
+        return FloatRect(
+            {
+                bounds.position.x + 10.f,
+                bounds.position.y + 6.f
+            },
+        {
+            bounds.size.x - 20.f,
+            bounds.size.y - 12.f
+        }
+        );
+    }
+};
+
 void resetGame(Player& player, vector<unique_ptr<Platform>>& platforms,
-    vector<PowerUp>& powerUps, float& highestPoint,
+    vector<PowerUp>& powerUps, vector<Bird>& birds, float& highestPoint,
     float& lastPlatformY, View& camera, Texture& platformTexture)
 {
     player.reset({ 100.f, 600.f });
 
     platforms.clear();
     powerUps.clear();
+    birds.clear();
 
     float spacing = 200.f;
     float startY = 750.f;
@@ -260,7 +355,7 @@ int main()
     uniform_int_distribution<int> randPlatform(1, 3);
     uniform_int_distribution<int> chance(1, 100);
 
-    RenderWindow window(VideoMode({ 600, 800 }), "SFML works!");
+    RenderWindow window(VideoMode({ 600, 800 }), "SFML works!", Style::Titlebar | Style::Close);
 
     window.setFramerateLimit(60);
 
@@ -281,6 +376,12 @@ int main()
 
     Texture bgTexture;
     bgTexture.loadFromFile("Textures/bg.png");
+
+    Texture powerUpTexture;
+    powerUpTexture.loadFromFile("Textures/Bonus.png");
+
+    Texture birdTexture;
+    birdTexture.loadFromFile("Textures/Bird.png");
 
     Sprite playerSprite(playerTexture);
     playerSprite.setTextureRect({ {0,0},{128,128} });
@@ -308,6 +409,18 @@ int main()
     resetText.setFillColor(Color::White);
     resetText.setPosition({ 10.f, 40.f });
 
+    Text titleText(font);
+    titleText.setCharacterSize(60);
+    titleText.setFillColor(Color::White);
+    titleText.setString("DOODLE JUMP");
+    titleText.setPosition({ 50.f, 200.f });
+
+    Text startText(font);
+    startText.setCharacterSize(30);
+    startText.setFillColor(Color::White);
+    startText.setString("Press SPACE to start");
+    startText.setPosition({ 100.f, 400.f });
+
     Clock clock;
     Clock animationClock;
     int currentFrame = 0;
@@ -319,6 +432,7 @@ int main()
 
     vector<unique_ptr<Platform>> platforms;
     vector<PowerUp> powerUps;
+    vector<Bird> birds;
     float platformCount = 8;
     float startY = 750.f;
     float spacing = 200.f;
@@ -364,7 +478,7 @@ int main()
                 {
                     if (keyPressed->scancode == Scan::Space)
                     {
-                        resetGame(player,platforms,powerUps,highestPoint,lastPlatformY,camera, platformTexture);
+                        resetGame(player, platforms, powerUps, birds,highestPoint, lastPlatformY, camera, platformTexture);
                         currentState = GameState::Playing;
                     }
                 }
@@ -385,6 +499,7 @@ int main()
                 float x = distX(rng);
                 int platformType = randPlatform(rng);
                 int powerUpChance = chance(rng);
+                int birdChance = chance(rng);
 
                 if (platformType == 1)
                 {
@@ -397,9 +512,14 @@ int main()
                     platforms.push_back(make_unique<BreakablePlatform>(Vector2f{ x, lastPlatformY }, Vector2f{ 100.f, 40.f }, platformTexture, 1));
                 }
 
-                if (powerUpChance <= 20 && powerUpChance >= 1)
+                if (powerUpChance <= 15 && powerUpChance >= 1)
                 {
-                    powerUps.push_back(PowerUp(Vector2f{ x, lastPlatformY - 20.f }, Vector2f{ 50.f,20.f }, platforms.back().get()));
+                    powerUps.push_back(PowerUp(Vector2f{ x, lastPlatformY - 10.f }, Vector2f{ 50.f,40.f }, platforms.back().get(), powerUpTexture));
+                }
+
+                if (birdChance <= 15 && birdChance >= 1)
+                {
+                    birds.push_back(Bird(Vector2f{ x, lastPlatformY - 150.f }, Vector2f{ 64.f, 54.f }, 100.f, 150.f, birdTexture));
                 }
             }
 
@@ -412,6 +532,11 @@ int main()
                 [&highestPoint](const unique_ptr<Platform>& platform) {
                     return platform->getPosition().y > highestPoint + 400.f;
                 }), platforms.end());
+
+            birds.erase(remove_if(birds.begin(), birds.end(),
+                [&highestPoint](Bird& bird) {
+                    return bird.getPosition().y > highestPoint + 400.f;
+                }), birds.end());
             
 
             player.handleInput(deltaTime, playerSprite);
@@ -488,6 +613,8 @@ int main()
                     animationClock.restart();
                 }
 
+                
+
             }
 
         }
@@ -502,51 +629,94 @@ int main()
         window.clear();
         window.setView(camera);
         window.draw(backgroundSprite);
-        for (const unique_ptr<Platform>& platform : platforms) {
-            platform->draw(window);
-            platform->update(deltaTime);
 
-            bool isFalling = player.getVelocity().y > 0.f;
-            auto intersection = player.getBounds().findIntersection(platform->getBounds());
-            if (isFalling && intersection.has_value())
-            {
-                float playerBottom = player.getPosition().y + player.getSize().y / 2.f;
-                float platformTop = platform->getPosition().y - platform->getSize().y / 2.f;
+        if (currentState == GameState::Playing || currentState == GameState::GameOver)
+        {
+            for (const unique_ptr<Platform>& platform : platforms) {
+                platform->draw(window);
+                platform->update(deltaTime);
 
-                float tolerance = platform->getSize().y - 3.f;
-                if (playerBottom - platformTop <= tolerance)
+                bool isFalling = player.getVelocity().y > 0.f;
+                auto intersection = player.getBounds().findIntersection(platform->getBounds());
+                if (isFalling && intersection.has_value())
                 {
-                    BreakablePlatform* breakable = dynamic_cast<BreakablePlatform*>(platform.get());
-                    if (breakable == nullptr || !breakable->isGetBroken())
-                    {
-                        player.landOn(platformTop);
+                    float playerBottom = player.getPosition().y + player.getSize().y / 2.f;
+                    float platformTop = platform->getPosition().y - platform->getSize().y / 2.f;
 
-                    }
-                    if (breakable != nullptr)
+                    float tolerance = platform->getSize().y - 3.f;
+                    if (playerBottom - platformTop <= tolerance)
                     {
-                        breakable->breakPlatform();
+                        BreakablePlatform* breakable = dynamic_cast<BreakablePlatform*>(platform.get());
+                        if (breakable == nullptr || !breakable->isGetBroken())
+                        {
+                            player.landOn(platformTop);
+
+                        }
+                        if (breakable != nullptr)
+                        {
+                            breakable->breakPlatform();
+                        }
+                    }
+                }
+            }
+            for (PowerUp& powerUp : powerUps) {
+                if (!powerUp.isGetCollected())
+                {
+                    powerUp.draw(window);
+                    powerUp.update();
+
+                    bool isFalling = player.getVelocity().y > 0.f;
+                    auto intersection = player.getBounds().findIntersection(powerUp.getBounds());
+                    if (isFalling && intersection.has_value())
+                    {
+                        player.superJump();
+                        powerUp.collectPower();
+                    }
+                }
+            }
+            window.draw(playerSprite);
+
+            for (Bird& bird : birds) {
+                if (!bird.isDead())
+                {
+                    bird.draw(window);
+                    bird.update(deltaTime);
+
+                    bool isFalling = player.getVelocity().y > 0.f;
+                    auto intersection = player.getBounds().findIntersection(bird.getBounds());
+
+                    if (intersection.has_value())
+                    {
+                        float playerBottom = player.getPosition().y + player.getSize().y / 2.f;
+                        float birdTop = bird.getPosition().y - bird.getSize().y / 2.f;
+                        float tolerance = bird.getSize().y - 3.f;
+
+                        if (isFalling && (playerBottom - birdTop <= tolerance))
+                        {
+                            bird.kill();
+                            player.jump();
+                        }
+                        else
+                        {
+                            currentState = GameState::GameOver;
+                        }
+
                     }
                 }
             }
         }
 
-        for (PowerUp& powerUp : powerUps) {
-            if (!powerUp.isGetCollected())
-            {
-                powerUp.draw(window);
-                powerUp.update();
-                auto intersection = player.getBounds().findIntersection(powerUp.getBounds());
-                if (intersection.has_value())
-                {
-                    player.superJump();
-                    powerUp.collectPower();
-                }
-            }
-        }
-        window.draw(playerSprite);
         window.setView(uiView);
-        window.draw(scoreText);
-        window.draw(resetText);
+        if (currentState == GameState::Menu)
+        {
+            window.draw(titleText);
+            window.draw(startText);
+        }
+        else
+        {
+            window.draw(scoreText);
+            window.draw(resetText);
+        }
         window.display();
 
     }

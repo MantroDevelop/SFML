@@ -1,4 +1,5 @@
 ﻿#include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 #include <Windows.h>
 #include <iostream>
 #include <random>
@@ -208,6 +209,13 @@ public:
         shape.setPosition({ attachedPlatform->getPosition().x, attachedPlatform->getPosition().y - 34.f});
     }
 
+    bool isPlatformBroken() const {
+        BreakablePlatform* breakable =
+            dynamic_cast<BreakablePlatform*>(attachedPlatform);
+
+        return breakable != nullptr && breakable->isGetBroken();
+    }
+
     Vector2f getAttachedPlatformPostion() {
         return attachedPlatform->getPosition();
     }
@@ -310,15 +318,21 @@ public:
     FloatRect getBounds() const {
         FloatRect bounds = shape.getGlobalBounds();
 
-        return FloatRect(
-            {
-                bounds.position.x + 10.f,
-                bounds.position.y + 6.f
-            },
-        {
-            bounds.size.x - 20.f,
-            bounds.size.y - 12.f
+        float leftInset;
+        float rightInset;
+
+        if (direction == -1) {
+            leftInset = 14.f;
+            rightInset = 18.f;
         }
+        else {
+            leftInset = 18.f;
+            rightInset = 14.f;
+        }
+
+        return FloatRect(
+            { bounds.position.x + leftInset, bounds.position.y + 9.f },
+            { bounds.size.x - leftInset - rightInset, bounds.size.y - 18.f }
         );
     }
 };
@@ -337,7 +351,7 @@ void resetGame(Player& player, vector<unique_ptr<Platform>>& platforms,
     float startY = 750.f;
     for (int i = 0; i < 4; ++i)
     {
-        float x = 100.f + (i % 2) * 350.f;
+        float x = 100.f + (i % 2) * 300.f;
         float y = startY - (i * spacing);
         platforms.push_back(make_unique<Platform>(Vector2f{ x, y }, Vector2f{ 100.f, 40.f }, platformTexture, 0));
     }
@@ -361,6 +375,14 @@ int main()
 
     float XSizeRect = 50.f;
     float YSizeRect = 50.f;
+
+    SoundBuffer jumpBuffer;
+    jumpBuffer.loadFromFile("Sounds/jump.mp3");
+    Sound jumpSound(jumpBuffer);
+
+    SoundBuffer gameOverBuffer;
+    gameOverBuffer.loadFromFile("Sounds/gameover.mp3");
+    Sound gameOverSound(gameOverBuffer);
 
     Texture platformTexture;
     platformTexture.loadFromFile("Textures/platforms2.png");
@@ -446,7 +468,7 @@ int main()
 
     for (int i = 0; i < 4; ++i)
     {
-        float x = 100.f + (i % 2) * 350.f;
+        float x = 100.f + (i % 2) * 300.f;
         float y = startY - (i * spacing);
         platforms.push_back(make_unique<Platform>(Vector2f{ x, y }, Vector2f{ 100.f, 40.f }, platformTexture, 0));
     }
@@ -514,7 +536,7 @@ int main()
 
                 if (powerUpChance <= 15 && powerUpChance >= 1)
                 {
-                    powerUps.push_back(PowerUp(Vector2f{ x, lastPlatformY - 10.f }, Vector2f{ 50.f,40.f }, platforms.back().get(), powerUpTexture));
+                    powerUps.push_back(PowerUp(Vector2f{ x, lastPlatformY - 10.f }, Vector2f{ 50.f,50.f }, platforms.back().get(), powerUpTexture));
                 }
 
                 if (birdChance <= 15 && birdChance >= 1)
@@ -554,6 +576,8 @@ int main()
             if (player.getPosition().y > highestPoint + 600.f)
             {
                 currentState = GameState::GameOver;
+                gameOverSound.play();
+
             }
 
             if (player.getVelocity().y > 0.f)
@@ -622,7 +646,6 @@ int main()
         {
             scoreText.setString("GAME OVER! Score: " + to_string(score));
             resetText.setString("Press SPACE to restart");
-
         }
         backgroundSprite.setPosition({ camera.getCenter().x - 300.f, camera.getCenter().y - 400.f});
 
@@ -650,7 +673,7 @@ int main()
                         if (breakable == nullptr || !breakable->isGetBroken())
                         {
                             player.landOn(platformTop);
-
+                            jumpSound.play();
                         }
                         if (breakable != nullptr)
                         {
@@ -660,16 +683,19 @@ int main()
                 }
             }
             for (PowerUp& powerUp : powerUps) {
-                if (!powerUp.isGetCollected())
+                if (!powerUp.isGetCollected() && !powerUp.isPlatformBroken())
                 {
                     powerUp.draw(window);
                     powerUp.update();
 
                     bool isFalling = player.getVelocity().y > 0.f;
-                    auto intersection = player.getBounds().findIntersection(powerUp.getBounds());
+                    auto intersection =
+                        player.getBounds().findIntersection(powerUp.getBounds());
+
                     if (isFalling && intersection.has_value())
                     {
                         player.superJump();
+                        jumpSound.play();
                         powerUp.collectPower();
                     }
                 }
@@ -695,10 +721,13 @@ int main()
                         {
                             bird.kill();
                             player.jump();
+                            jumpSound.play();
                         }
                         else
                         {
                             currentState = GameState::GameOver;
+                            gameOverSound.play();
+
                         }
 
                     }

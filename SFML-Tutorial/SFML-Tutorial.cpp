@@ -16,7 +16,13 @@ using Keyboard::Scan;
 enum class GameState {
     Menu,
     Playing,
+    Paused,
     GameOver
+};
+
+enum class MenuOption {
+    Play,
+    Exit
 };
 
 enum class TextureState {
@@ -71,11 +77,14 @@ public:
         );
     }
 
-    void barrierX(float windowWidth, float shapeWidth) {
-        float halfWidth = shapeWidth / 2.f;
+    void wrapX(float windowWidth) {
+        float halfWidth = size.x / 2.f;
 
-        if (position.x < halfWidth) position.x = halfWidth;
-        if (position.x > windowWidth - halfWidth) position.x = windowWidth - halfWidth;
+        if (position.x < -halfWidth)
+            position.x = windowWidth + halfWidth;
+
+        if (position.x > windowWidth + halfWidth)
+            position.x = -halfWidth;
     }
 
     void landOn(float platformTopY) {
@@ -316,60 +325,114 @@ public:
     }
 
     FloatRect getBounds() const {
-        FloatRect bounds = shape.getGlobalBounds();
+        float width = 38.f;
+        float height = 30.f;
 
-        float leftInset;
-        float rightInset;
+        float offsetX = 8.f;
+        float offsetY = 10.f;
 
-        if (direction == -1) {
-            leftInset = 14.f;
-            rightInset = 18.f;
-        }
-        else {
-            leftInset = 18.f;
-            rightInset = 14.f;
-        }
+        if (direction == 1)
+            offsetX = -8.f;
 
         return FloatRect(
-            { bounds.position.x + leftInset, bounds.position.y + 9.f },
-            { bounds.size.x - leftInset - rightInset, bounds.size.y - 18.f }
+            { shape.getPosition().x - width / 2.f + offsetX, shape.getPosition().y - height / 2.f + offsetY},
+            { width, height }
         );
     }
 };
 
-void resetGame(Player& player, vector<unique_ptr<Platform>>& platforms,
-    vector<PowerUp>& powerUps, vector<Bird>& birds, float& highestPoint,
-    float& lastPlatformY, View& camera, Texture& platformTexture)
+class StandingMonster {
+    RectangleShape shape;
+    bool isKilled = false;
+
+public:
+    StandingMonster(Vector2f position,Vector2f size, const Texture& texture) {
+        shape.setSize(size);
+        shape.setTexture(&texture);
+        shape.setOrigin(
+            shape.getGeometricCenter()
+        );
+        shape.setPosition(position);
+    }
+
+    void draw(RenderWindow& window) const {
+        if (!isKilled)
+            window.draw(shape);
+    }
+
+    void kill() {
+        isKilled = true;
+    }
+
+    bool isDead() const {
+        return isKilled;
+    }
+
+    Vector2f getPosition() const {
+        return shape.getPosition();
+    }
+
+    Vector2f getSize() const {
+        return shape.getSize();
+    }
+
+    FloatRect getBounds() const {
+        FloatRect bounds =
+            shape.getGlobalBounds();
+
+        float insetX = 10.f;
+        float insetY = 8.f;
+
+        return FloatRect(
+            {
+                bounds.position.x + insetX,
+                bounds.position.y + insetY
+            },
+            {
+                bounds.size.x - insetX * 2.f,
+                bounds.size.y - insetY * 2.f
+            }
+        );
+    }
+};
+
+void resetGame(
+    Player& player,vector<unique_ptr<Platform>>& platforms,vector<PowerUp>& powerUps, vector<Bird>& birds,
+    vector<StandingMonster>& monsters,float& highestPoint,float& lastPlatformY,View& camera,Texture& platformTexture
+)
 {
     player.reset({ 100.f, 600.f });
-
     platforms.clear();
     powerUps.clear();
     birds.clear();
+    monsters.clear();
 
     float spacing = 200.f;
     float startY = 750.f;
+
     for (int i = 0; i < 4; ++i)
     {
         float x = 100.f + (i % 2) * 300.f;
-        float y = startY - (i * spacing);
-        platforms.push_back(make_unique<Platform>(Vector2f{ x, y }, Vector2f{ 100.f, 40.f }, platformTexture, 0));
+        float y = startY - i * spacing;
+
+        platforms.push_back(
+            make_unique<Platform>(Vector2f{ x, y }, Vector2f{ 100.f,40.f }, platformTexture, 0)
+        );
     }
 
     highestPoint = 750.f;
-    lastPlatformY = startY - (4 * spacing) + 100.f;
-    camera.setCenter({ 300.f, highestPoint + 100.f });
-
+    lastPlatformY = startY - 4 * spacing + 100.f;
+    camera.setCenter({ 300.f, highestPoint + 100.f});
 }
 
 int main()
 {
     mt19937 rng(random_device{}());
-    uniform_real_distribution<float> distX(50.f, 550.f);
+    uniform_real_distribution<float> distX(100.f, 500.f);
     uniform_int_distribution<int> randPlatform(1, 3);
     uniform_int_distribution<int> chance(1, 100);
 
-    RenderWindow window(VideoMode({ 600, 800 }), "SFML works!", Style::Titlebar | Style::Close);
+    RenderWindow window(VideoMode({ 600, 800 }), "Doodle Jump!", Style::Titlebar | Style::Close);
 
     window.setFramerateLimit(60);
 
@@ -379,10 +442,6 @@ int main()
     SoundBuffer jumpBuffer;
     jumpBuffer.loadFromFile("Sounds/jump.mp3");
     Sound jumpSound(jumpBuffer);
-
-    SoundBuffer gameOverBuffer;
-    gameOverBuffer.loadFromFile("Sounds/gameover.mp3");
-    Sound gameOverSound(gameOverBuffer);
 
     Texture platformTexture;
     platformTexture.loadFromFile("Textures/platforms2.png");
@@ -399,11 +458,20 @@ int main()
     Texture bgTexture;
     bgTexture.loadFromFile("Textures/bg.png");
 
+    Texture bgNightTexture;
+    bgNightTexture.loadFromFile("Textures/bgNight.png");
+
+    Texture bgSpaceTexture;
+    bgSpaceTexture.loadFromFile("Textures/bgSpace.png");
+
     Texture powerUpTexture;
     powerUpTexture.loadFromFile("Textures/Bonus.png");
 
     Texture birdTexture;
     birdTexture.loadFromFile("Textures/Bird.png");
+
+    Texture monsterTexture;
+    monsterTexture.loadFromFile("Textures/Monster.png");
 
     Sprite playerSprite(playerTexture);
     playerSprite.setTextureRect({ {0,0},{128,128} });
@@ -416,32 +484,52 @@ int main()
     float gravity = 900.f;
 
     Font font;
-    if (!font.openFromFile("Roboto-Italic-VariableFont_wdth,wght.ttf"))
+    if (!font.openFromFile("Fonts/Pixel.ttf"))
     {
         cout << "Failed to load font!" << endl;
     }
 
     Text scoreText(font);
     scoreText.setCharacterSize(30);
-    scoreText.setFillColor(Color::White);
+    scoreText.setFillColor(Color::Yellow);
+    scoreText.setOutlineColor(Color::Black);
+    scoreText.setOutlineThickness(3.f);
     scoreText.setPosition({ 10.f, 10.f });
 
     Text resetText(font);
     resetText.setCharacterSize(30);
-    resetText.setFillColor(Color::White);
+    resetText.setFillColor(Color::Yellow);
+    resetText.setOutlineColor(Color::Black);
+    resetText.setOutlineThickness(3.f);
     resetText.setPosition({ 10.f, 40.f });
 
     Text titleText(font);
     titleText.setCharacterSize(60);
-    titleText.setFillColor(Color::White);
+    titleText.setFillColor(Color::Yellow);
+    titleText.setOutlineColor(Color::Black);
+    titleText.setOutlineThickness(3.f);
     titleText.setString("DOODLE JUMP");
     titleText.setPosition({ 50.f, 200.f });
 
-    Text startText(font);
-    startText.setCharacterSize(30);
-    startText.setFillColor(Color::White);
-    startText.setString("Press SPACE to start");
-    startText.setPosition({ 100.f, 400.f });
+    Text pauseText(font);
+    pauseText.setCharacterSize(50);
+    pauseText.setFillColor(Color::White);
+    pauseText.setString("PAUSED\n\nESC - Continue");
+    pauseText.setPosition({ 100.f, 300.f });
+
+    Text playText(font);
+    Text exitText(font);
+    Text menuHelpText(font);
+
+    playText.setCharacterSize(40);
+    exitText.setCharacterSize(40);
+
+    playText.setPosition({ 220.f, 380.f });
+    exitText.setPosition({ 220.f, 450.f });
+
+    menuHelpText.setCharacterSize(20);
+    menuHelpText.setPosition({ 175.f, 550.f });
+    menuHelpText.setString("UP / DOWN + ENTER");
 
     Clock clock;
     Clock animationClock;
@@ -455,6 +543,7 @@ int main()
     vector<unique_ptr<Platform>> platforms;
     vector<PowerUp> powerUps;
     vector<Bird> birds;
+    vector<StandingMonster> monsters;
     float platformCount = 8;
     float startY = 750.f;
     float spacing = 200.f;
@@ -464,6 +553,7 @@ int main()
     int score = static_cast<int>(startY - highestPoint);
 
     GameState currentState = GameState::Menu;
+    MenuOption menuOption = MenuOption::Play;
     TextureState playerState = TextureState::Idle;
 
     for (int i = 0; i < 4; ++i)
@@ -483,45 +573,110 @@ int main()
             if (event->is<Event::Closed>())
                 window.close();
 
-            if (currentState == GameState::Menu)
-            {
-                if (const auto* keyPressed = event->getIf<Event::KeyPressed>())
-                {
-                    if (keyPressed->scancode == Scan::Space)
-                    {
-                        currentState = GameState::Playing;
+            if (const auto* keyPressed = event->getIf<Event::KeyPressed>()) {
+
+                if (currentState == GameState::Menu) {
+                    if (keyPressed->scancode == Scan::Up ||
+                        keyPressed->scancode == Scan::Down) {
+
+                        if (menuOption == MenuOption::Play)
+                            menuOption = MenuOption::Exit;
+                        else
+                            menuOption = MenuOption::Play;
+                    }
+
+                    if (keyPressed->scancode == Scan::Enter) {
+                        if (menuOption == MenuOption::Play)
+                            currentState = GameState::Playing;
+                        else
+                            window.close();
                     }
                 }
-            }
 
-            if (currentState == GameState::GameOver)
-            {
-                if (const auto* keyPressed = event->getIf<Event::KeyPressed>())
-                {
-                    if (keyPressed->scancode == Scan::Space)
-                    {
-                        resetGame(player, platforms, powerUps, birds,highestPoint, lastPlatformY, camera, platformTexture);
+                else if (currentState == GameState::Playing) {
+                    if (keyPressed->scancode == Scan::Escape)
+                        currentState = GameState::Paused;
+                }
+
+                else if (currentState == GameState::Paused) {
+                    if (keyPressed->scancode == Scan::Escape)
                         currentState = GameState::Playing;
+                }
+
+                else if (currentState == GameState::GameOver) {
+                    if (keyPressed->scancode == Scan::Space) {
+                        resetGame( player,platforms,powerUps,birds,monsters,highestPoint,lastPlatformY,camera, platformTexture );
+                        score = 0;
+                        backgroundSprite.setTexture(bgTexture);
+                        currentState = GameState::Playing;
+                    }
+
+                    if (keyPressed->scancode == Scan::Escape) {
+                        resetGame(player,platforms,powerUps,birds,monsters,highestPoint,lastPlatformY,camera,platformTexture);
+                        score = 0;
+                        backgroundSprite.setTexture(bgTexture);
+                        currentState = GameState::Menu;
                     }
                 }
             }
         }
 
-        if (currentState == GameState::Menu)
+        if (menuOption == MenuOption::Play)
         {
-            scoreText.setString("Press SPACE to start");
+            playText.setString("> PLAY <");
+            exitText.setString("EXIT");
         }
-        else if (currentState == GameState::Playing)
+        else
+        {
+            playText.setString("PLAY");
+            exitText.setString("> EXIT <");
+        }
+
+        if (currentState == GameState::Playing)
         {
             score = static_cast<int>(startY - highestPoint);
 
+            float currentSpacing;
+            int currentBirdChance;
+            int currentMonsterChance;
+
+            if (score < 2000)
+            {
+                currentSpacing = 180.f;
+                currentBirdChance = 8;
+                currentMonsterChance = 5;
+                backgroundSprite.setTexture(bgTexture);
+            }
+            else if (score < 5000)
+            {
+                currentSpacing = 200.f;
+                currentBirdChance = 13;
+                currentMonsterChance = 9;
+                backgroundSprite.setTexture(bgTexture);
+            }
+            else if (score < 9000)
+            {
+                currentSpacing = 215.f;
+                currentBirdChance = 17;
+                currentMonsterChance = 13;
+                backgroundSprite.setTexture(bgNightTexture);
+            }
+            else
+            {
+                currentSpacing = 225.f;
+                currentBirdChance = 22;
+                currentMonsterChance = 17;
+                backgroundSprite.setTexture(bgSpaceTexture);
+            }
+
             scoreText.setString("Score: " + to_string(score));
-            if (highestPoint < lastPlatformY + 100.f) {
-                lastPlatformY -= spacing + 25.f;
+            if (highestPoint < lastPlatformY + 250.f) {
+                lastPlatformY -= currentSpacing;
                 float x = distX(rng);
                 int platformType = randPlatform(rng);
                 int powerUpChance = chance(rng);
                 int birdChance = chance(rng);
+                int monsterChance = chance(rng);
 
                 if (platformType == 1)
                 {
@@ -538,8 +693,12 @@ int main()
                 {
                     powerUps.push_back(PowerUp(Vector2f{ x, lastPlatformY - 10.f }, Vector2f{ 50.f,50.f }, platforms.back().get(), powerUpTexture));
                 }
+                else if (monsterChance <= currentMonsterChance)
+                {
+                    monsters.push_back(StandingMonster(Vector2f{ x, lastPlatformY - 36.f }, Vector2f{ 55.f,55.f }, monsterTexture));
+                }
 
-                if (birdChance <= 15 && birdChance >= 1)
+                if (birdChance <= currentBirdChance)
                 {
                     birds.push_back(Bird(Vector2f{ x, lastPlatformY - 150.f }, Vector2f{ 64.f, 54.f }, 100.f, 150.f, birdTexture));
                 }
@@ -547,23 +706,29 @@ int main()
 
             powerUps.erase(remove_if(powerUps.begin(), powerUps.end(),
                 [&highestPoint](PowerUp& powerUp) {
-                    return powerUp.getAttachedPlatformPostion().y > highestPoint + 400.f;
+                    return powerUp.getAttachedPlatformPostion().y > highestPoint + 500.f;
                 }), powerUps.end());
 
             platforms.erase(remove_if(platforms.begin(), platforms.end(),
                 [&highestPoint](const unique_ptr<Platform>& platform) {
-                    return platform->getPosition().y > highestPoint + 400.f;
+                    return platform->getPosition().y > highestPoint + 500.f;
                 }), platforms.end());
 
             birds.erase(remove_if(birds.begin(), birds.end(),
                 [&highestPoint](Bird& bird) {
-                    return bird.getPosition().y > highestPoint + 400.f;
+                    return bird.getPosition().y > highestPoint + 500.f;
                 }), birds.end());
+
+            monsters.erase(remove_if(monsters.begin(),monsters.end(),
+                [&highestPoint](StandingMonster& monster) {
+                    return monster.getPosition().y > highestPoint + 500.f;
+                }), monsters.end()
+            );
             
 
             player.handleInput(deltaTime, playerSprite);
             player.update(deltaTime, gravity);
-            player.barrierX(600.f, player.getSize().x);
+            player.wrapX(600.f);
             playerSprite.setPosition(player.getPosition());
 
             if (player.getPosition().y < highestPoint)
@@ -576,7 +741,6 @@ int main()
             if (player.getPosition().y > highestPoint + 600.f)
             {
                 currentState = GameState::GameOver;
-                gameOverSound.play();
 
             }
 
@@ -653,7 +817,7 @@ int main()
         window.setView(camera);
         window.draw(backgroundSprite);
 
-        if (currentState == GameState::Playing || currentState == GameState::GameOver)
+        if (currentState == GameState::Playing || currentState == GameState::GameOver || currentState == GameState::Paused)
         {
             for (const unique_ptr<Platform>& platform : platforms) {
                 platform->draw(window);
@@ -726,26 +890,61 @@ int main()
                         else
                         {
                             currentState = GameState::GameOver;
-                            gameOverSound.play();
-
                         }
 
+                    }
+                }
+            }
+
+            for (StandingMonster& monster : monsters)
+            {
+                if (!monster.isDead())
+                {
+                    monster.draw(window);
+
+                    auto intersection = player.getBounds().findIntersection(monster.getBounds());
+
+                    if (intersection.has_value())
+                    {
+                        bool isFalling = player.getVelocity().y > 0.f;
+                        float playerBottom = player.getPosition().y + player.getSize().y / 2.f;
+                        float monsterTop = monster.getPosition().y - monster.getSize().y / 2.f;
+
+                        if (isFalling && playerBottom - monsterTop < 25.f)
+                        {
+                            monster.kill();
+                            player.jump();
+                            jumpSound.play();
+                        }
+                        else
+                        {
+                            currentState =GameState::GameOver;
+                        }
                     }
                 }
             }
         }
 
         window.setView(uiView);
+
+        if (currentState == GameState::Paused)
+        {
+            window.draw(pauseText);
+        }
+
         if (currentState == GameState::Menu)
         {
             window.draw(titleText);
-            window.draw(startText);
+            window.draw(playText);
+            window.draw(exitText);
+            window.draw(menuHelpText);
         }
         else
         {
             window.draw(scoreText);
             window.draw(resetText);
         }
+
         window.display();
 
     }

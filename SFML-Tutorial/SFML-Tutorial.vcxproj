@@ -145,7 +145,23 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Entities\Bird.cpp" />
+    <ClCompile Include="Entities\BreakablePlatform.cpp" />
+    <ClCompile Include="Entities\MovingPlatform.cpp" />
+    <ClCompile Include="Entities\Platform.cpp" />
+    <ClCompile Include="Entities\Player.cpp" />
+    <ClCompile Include="Entities\PowerUp.cpp" />
+    <ClCompile Include="Entities\StandingMonster.cpp" />
     <ClCompile Include="SFML-Tutorial.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Entities\Bird.h" />
+    <ClInclude Include="Entities\BreakablePlatform.h" />
+    <ClInclude Include="Entities\MovingPlatform.h" />
+    <ClInclude Include="Entities\Platform.h" />
+    <ClInclude Include="Entities\Player.h" />
+    <ClInclude Include="Entities\PowerUp.h" />
+    <ClInclude Include="Entities\StandingMonster.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

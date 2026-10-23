@@ -6,6 +6,14 @@
 #include <algorithm>
 #include <string>
 #include <memory>
+#include "entities/Player.h"
+#include "entities/Platform.h"
+#include "entities/MovingPlatform.h"
+#include "entities/BreakablePlatform.h"
+#include "entities/PowerUp.h"
+#include "entities/Bird.h"
+#include "entities/StandingMonster.h"
+
 
 using namespace sf;
 using namespace std;
@@ -29,371 +37,6 @@ enum class TextureState {
     Idle,
     Jump,
     Fall
-};
-
-class Player {
-    Vector2f position;
-    Vector2f velocity;
-    Vector2f size;
-    float speed = 250.f;
-
-public:
-    Player(Vector2f startPosition, Vector2f playerSize, float moveSpeed)
-        : position(startPosition), velocity(0.f, 0.f),
-        size(playerSize), speed(moveSpeed)
-    {
-    }
-
-    void jump() {
-        velocity.y = -800.f;
-    }
-
-    void superJump() {
-       velocity.y = -1200.f;
-    }
-
-    void update(float deltaTime, float gravity) {
-        velocity.y += gravity * deltaTime;
-        position.y += velocity.y * deltaTime;
-    }
-
-    void handleInput(float deltaTime, Sprite& player) {
-        float distance = speed * deltaTime;
-
-        if (Keyboard::isKeyPressed(Scan::A)) {
-            position.x -= distance;
-            player.setScale({ -1.5f, 1.5f });
-        }
-        if (Keyboard::isKeyPressed(Scan::D)) {
-            position.x += distance;
-            player.setScale({ 1.5f,1.5f });
-        }
-    }
-
-    FloatRect getBounds() const {
-        return FloatRect(
-            { position.x - size.x / 2.f, position.y - size.y / 2.f },
-            size
-        );
-    }
-
-    void wrapX(float windowWidth) {
-        float halfWidth = size.x / 2.f;
-
-        if (position.x < -halfWidth)
-            position.x = windowWidth + halfWidth;
-
-        if (position.x > windowWidth + halfWidth)
-            position.x = -halfWidth;
-    }
-
-    void landOn(float platformTopY) {
-        position.y = platformTopY - size.y / 2.f;
-        jump();
-    }
-
-    void reset(Vector2f startPosition) {
-        position = startPosition;
-        velocity = { 0.f,0.f };
-    }
-
-    Vector2f getPosition() const {
-        return position;
-    }
-
-    Vector2f getVelocity() const {
-        return velocity;
-    }
-
-    Vector2f getSize() const {
-        return size;
-    }
-};
-
-class Platform {
-protected:
-    RectangleShape shape;
-
-public:
-    Platform(Vector2f position, Vector2f size, const Texture& texture, int skinIndex) {
-        shape.setSize(size);
-        shape.setTexture(&texture);
-        shape.setTextureRect(IntRect({ 0, skinIndex*16 }, { 33, 16 }));
-        shape.setOrigin(shape.getGeometricCenter());
-        shape.setPosition(position);
-    }
-
-    virtual void draw(RenderWindow& window) const {
-        window.draw(shape);
-    }
-
-    virtual ~Platform() {}
-
-    virtual void update(float deltaTime) {}
-
-    Vector2f getPosition() const {
-        return shape.getPosition();
-    }
-
-    Vector2f getSize() const {
-        return shape.getSize();
-    }
-
-    FloatRect getBounds() const {
-        return shape.getGlobalBounds();
-    }
-
-};
-
-class MovingPlatform : public Platform {
-    float speed;
-    float leftBound;
-    float rightBound;
-    int direction = 1;
-public:
-    MovingPlatform(Vector2f position, Vector2f size, float moveSpeed, float range, const Texture& texture, int skinIndex)
-        : Platform(position, size, texture, skinIndex), speed(moveSpeed),
-        leftBound(position.x - range), rightBound(position.x + range) {
-    }
-
-    void update(float deltaTime) override{
-        float dx = speed * direction * deltaTime;
-        shape.move({ dx,0.f });
-
-        if (shape.getPosition().x <= leftBound || shape.getPosition().x >= rightBound || shape.getPosition().x - 50.f <= 0.f || shape.getPosition().x + 50.f >= 600.f)
-        {
-            direction *= -1;
-        }
-    }
-};
-
-class BreakablePlatform : public Platform {
-    bool isBroken = false;
-public:
-    BreakablePlatform(Vector2f position, Vector2f size, const Texture& texture, int skinIndex)
-        : Platform(position, size, texture, skinIndex)
-    {
-    }
-
-    void breakPlatform() {
-        isBroken = true;
-    }
-
-    bool isGetBroken() const{
-        return isBroken;
-    }
-
-    void draw(RenderWindow& window) const override {
-        if (!isBroken) {
-            window.draw(shape);
-        }
-    }
-};
-
-class PowerUp {
-    Platform* attachedPlatform;
-    RectangleShape shape;
-    bool isCollected = false;
-public:
-    PowerUp(Vector2f position, Vector2f size, Platform* attachedPlatformptr, const Texture& texture) {
-        attachedPlatform = attachedPlatformptr;
-        shape.setSize(size);
-        shape.setTexture(&texture);
-        shape.setOrigin(shape.getGeometricCenter());
-        shape.setPosition(position);
-    }
-
-    void draw(RenderWindow& window) {
-        if (isCollected == false)
-        {
-            window.draw(shape);
-        }
-    }
-
-    void collectPower() {
-        isCollected = true;
-    }
-
-    void update() {
-        shape.setPosition({ attachedPlatform->getPosition().x, attachedPlatform->getPosition().y - 34.f});
-    }
-
-    bool isPlatformBroken() const {
-        BreakablePlatform* breakable =
-            dynamic_cast<BreakablePlatform*>(attachedPlatform);
-
-        return breakable != nullptr && breakable->isGetBroken();
-    }
-
-    Vector2f getAttachedPlatformPostion() {
-        return attachedPlatform->getPosition();
-    }
-
-    FloatRect getBounds() const {
-        return shape.getGlobalBounds();
-    }
-
-    bool isGetCollected() const {
-        return isCollected;
-    }
-
-    Vector2f getPosition() const {
-        return shape.getPosition();
-    }
-
-    Vector2f getSize() const {
-        return shape.getSize();
-    }
-};
-
-class Bird {
-    RectangleShape shape;
-    float speed;
-    float leftBound;
-    float rightBound;
-    int direction = 1;
-    bool isKilled = false;
-
-    int currentFrame = 0;
-    Clock animationClock;
-    static const int FRAME_WIDTH = 48;
-    static const int FRAME_HEIGHT = 48;
-    static const int FRAME_COUNT = 9;
-
-public:
-    Bird(Vector2f position, Vector2f size, float moveSpeed, float range, const Texture& texture) {
-        shape.setSize(size);
-        shape.setTexture(&texture);
-        shape.setTextureRect(IntRect({ 0, 0 }, { FRAME_WIDTH, FRAME_HEIGHT }));
-        shape.setOrigin(shape.getGeometricCenter());
-        shape.setPosition(position);
-        speed = moveSpeed;
-        leftBound = max(position.x - range, 60.f);
-        rightBound = min(position.x + range, 540.f);
-    }
-
-    void update(float deltaTime) {
-        if (isKilled) return;
-
-        float dx = speed * direction * deltaTime;
-        shape.move({ dx, 0.f });
-
-        if (shape.getPosition().x <= leftBound || shape.getPosition().x >= rightBound)
-        {
-            direction *= -1;
-        }
-
-        if(direction == 1) {
-            shape.setScale({ -1.75f,1.75f });
-        }
-        if (direction == -1) {
-            shape.setScale({ 1.75f,1.75f });
-        }
-
-        if (animationClock.getElapsedTime().asSeconds() > 0.1f)
-        {
-            currentFrame++;
-            if (currentFrame >= FRAME_COUNT)
-                currentFrame = 0;
-
-            shape.setTextureRect(IntRect({ currentFrame * 64, 0 }, { FRAME_WIDTH, FRAME_HEIGHT }));
-            animationClock.restart();
-        }
-    }
-
-    void draw(RenderWindow& window) {
-        if (!isKilled)
-        {
-            window.draw(shape);
-        }
-    }
-
-    void kill() {
-        isKilled = true;
-    }
-
-    bool isDead() const {
-        return isKilled;
-    }
-
-    Vector2f getPosition() const {
-        return shape.getPosition();
-    }
-
-    Vector2f getSize() const {
-        return shape.getSize();
-    }
-
-    FloatRect getBounds() const {
-        float width = 38.f;
-        float height = 30.f;
-
-        float offsetX = 8.f;
-        float offsetY = 10.f;
-
-        if (direction == 1)
-            offsetX = -8.f;
-
-        return FloatRect(
-            { shape.getPosition().x - width / 2.f + offsetX, shape.getPosition().y - height / 2.f + offsetY},
-            { width, height }
-        );
-    }
-};
-
-class StandingMonster {
-    RectangleShape shape;
-    bool isKilled = false;
-
-public:
-    StandingMonster(Vector2f position,Vector2f size, const Texture& texture) {
-        shape.setSize(size);
-        shape.setTexture(&texture);
-        shape.setOrigin(
-            shape.getGeometricCenter()
-        );
-        shape.setPosition(position);
-    }
-
-    void draw(RenderWindow& window) const {
-        if (!isKilled)
-            window.draw(shape);
-    }
-
-    void kill() {
-        isKilled = true;
-    }
-
-    bool isDead() const {
-        return isKilled;
-    }
-
-    Vector2f getPosition() const {
-        return shape.getPosition();
-    }
-
-    Vector2f getSize() const {
-        return shape.getSize();
-    }
-
-    FloatRect getBounds() const {
-        FloatRect bounds =
-            shape.getGlobalBounds();
-
-        float insetX = 10.f;
-        float insetY = 8.f;
-
-        return FloatRect(
-            {
-                bounds.position.x + insetX,
-                bounds.position.y + insetY
-            },
-            {
-                bounds.size.x - insetX * 2.f,
-                bounds.size.y - insetY * 2.f
-            }
-        );
-    }
 };
 
 void resetGame(
@@ -436,9 +79,6 @@ int main()
 
     window.setFramerateLimit(60);
 
-    float XSizeRect = 50.f;
-    float YSizeRect = 50.f;
-
     SoundBuffer jumpBuffer;
     jumpBuffer.loadFromFile("Sounds/jump.mp3");
     Sound jumpSound(jumpBuffer);
@@ -479,7 +119,7 @@ int main()
     playerSprite.setScale({ 1.5f,1.5f });
 
     Sprite backgroundSprite(bgTexture);
-    backgroundSprite.setScale({ 3.f,3.f });
+    backgroundSprite.setScale({ 2.5f,2.5f });
     
     float gravity = 900.f;
 
@@ -695,7 +335,7 @@ int main()
                 }
                 else if (monsterChance <= currentMonsterChance)
                 {
-                    monsters.push_back(StandingMonster(Vector2f{ x, lastPlatformY - 36.f }, Vector2f{ 55.f,55.f }, monsterTexture));
+                    monsters.push_back(StandingMonster(Vector2f{ x, lastPlatformY - 36.f }, Vector2f{ 55.f,55.f }, monsterTexture, platforms.back().get()));
                 }
 
                 if (birdChance <= currentBirdChance)
@@ -821,7 +461,10 @@ int main()
         {
             for (const unique_ptr<Platform>& platform : platforms) {
                 platform->draw(window);
-                platform->update(deltaTime);
+                if (currentState != GameState::Paused)
+                {
+                    platform->update(deltaTime);
+                }
 
                 bool isFalling = player.getVelocity().y > 0.f;
                 auto intersection = player.getBounds().findIntersection(platform->getBounds());
@@ -850,11 +493,13 @@ int main()
                 if (!powerUp.isGetCollected() && !powerUp.isPlatformBroken())
                 {
                     powerUp.draw(window);
-                    powerUp.update();
+                    if (currentState != GameState::Paused)
+                    {
+                        powerUp.update();
+                    }
 
                     bool isFalling = player.getVelocity().y > 0.f;
-                    auto intersection =
-                        player.getBounds().findIntersection(powerUp.getBounds());
+                    auto intersection = player.getBounds().findIntersection(powerUp.getBounds());
 
                     if (isFalling && intersection.has_value())
                     {
@@ -870,7 +515,10 @@ int main()
                 if (!bird.isDead())
                 {
                     bird.draw(window);
-                    bird.update(deltaTime);
+                    if (currentState != GameState::Paused)
+                    {
+                        bird.update(deltaTime);
+                    }
 
                     bool isFalling = player.getVelocity().y > 0.f;
                     auto intersection = player.getBounds().findIntersection(bird.getBounds());
@@ -900,6 +548,10 @@ int main()
             {
                 if (!monster.isDead())
                 {
+                    if (currentState != GameState::Paused)
+                    {
+                        monster.update();
+                    }
                     monster.draw(window);
 
                     auto intersection = player.getBounds().findIntersection(monster.getBounds());
